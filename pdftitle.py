@@ -27,23 +27,48 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
-#import pyPdf
 import PyPDF2
 import io
 
 
-def pdf2title(content):
+def pdf2information(content):
     """
-    Take a PDF page's content (data) and extract a title from
+    Take a PDF page's content (data) and extract a title & info from
     the PDF metadata if it exists. Many PDFs omit this information
     so maybe a fallback could be extracting the first N chars
     from the document or to look for bookmarks or related metadata.
+    Returns a dict with pages, title keys.
     """
-    o = io.BytesIO(content)
-    # reader = pyPdf.PdfFileReader(o)
-    reader = PyPDF2.PdfFileReader(o)
-    t = reader.getDocumentInfo().title
-    print "outlines", outlines
-    print "trailer", trailer
-    return t or ''
+    # we'll collect our information about the document here
+    info = {
+        "pages": '',
+        "title": ''
+    }
 
+    try:
+        o = io.BytesIO(content)
+        reader = PyPDF2.PdfFileReader(o)
+    except Exception, e:
+        print "PDF parse error: {}".format(e)
+        return ' '.join(response)
+
+    try:
+        title = reader.getDocumentInfo().title
+    except Exception, e:
+        print "error getting pdf documentinfo/title: {}".format(e)
+    else:
+        if title:
+            info["title"] = title
+
+    try:
+        pages = reader.getNumPages()
+    except Exception, e:
+        print "PDF getNumPages error: {}".format(e)
+    else:
+        if pages == 1:
+            info["pages"] = '{} page'.format(pages)
+        elif pages > 1:
+            info["pages"] = '{} pages'.format(pages)
+
+    # will return blank string if nothing worked above
+    return info

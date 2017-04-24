@@ -48,7 +48,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.poolmanager import PoolManager
 from urllib3.contrib import pyopenssl
 
-from pdftitle import pdf2title
+from pdftitle import pdf2information
 
 try:
     import lxml.html
@@ -259,9 +259,6 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         statusinfo = []
         statusstring = ''
-        # we use this to annotate information about non-HTML pages
-        extradata = []
-        extradatastring = ''
 
         # TODO: make this a configurable functionality
         if bad_cert:
@@ -280,6 +277,7 @@ class AcademicUrlTitles(callbacks.Plugin):
         # this is metadata about the request. includes things like bad cert
         # warning, non-200 response codes, etc
         if statusinfo:
+            # make sure to put the space at the end here
             statusstring = '({0}) '.format(', '.join(statusinfo))
 
         # handle a normal web page
@@ -307,40 +305,15 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         # handle PDFs directly here
         elif 'application/pdf' in contenttype:
-            print "Parsing PDF"
-            pdf_error = False
-            try:
-                title = pdf2title(data)
-            except Exception, e:
-                print u"PDF Error: {}".format(e)
-                pdf_error = True
+            # returns 'Title of PDF - 100 pages' or '' on error
+            info = pdf2information(data)
+            return '[ {0}{1} ({2}, {3}) {4} ]'.format(
+                statusstring, info["title"], contenttype, info["pages"], size
+            )
 
-            if size:
-                extradata.append('{0}'.format(size))
-
-            if extradata:
-                extradatastring = ' '.join(extradata)
-
-            if not pdf_error and title:
-                reply = '[ {0}{3} ({1}) {2} ]'.format(statusstring,
-                                                     contenttype,
-                                                     extradatastring, title)
-            else:
-                reply = '[ {0}({1}) {2} ]'.format(statusstring,
-                                                     contenttype,
-                                                     extradatastring)
-            print "reply", reply
+        # generic datatypes, list size and request status
         else:
-            if size:
-                extradata.append('{0}'.format(size))
-
-            if extradata:
-                extradatastring = ' '.join(extradata)
-            reply = '[ {0}({1}) {2} ]'.format(statusstring,
-                                              contenttype,
-                                              extradatastring)
-
-        return reply
+            return '[ {0}({1}) {2} ]'.format( statusstring, contenttype, size)
 
     def parse_redirect(self, response):
         """
@@ -353,7 +326,7 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         # first check to see if it's a domain/subdomain redirect
         if start.hostname != end.hostname:
-            return end.domain
+            return end.hostname
 
         # then check to see if we did just a method change
         if start.scheme != end.scheme:
@@ -384,7 +357,8 @@ class AcademicUrlTitles(callbacks.Plugin):
         """ Convert a size in bytes into a human-friendly size.
         """
         if num is None:
-            return 'No size'
+            return ''
+
         num = int(num)
         for x in ['bytes','KB','MB','GB']:
             if num < 1024.0:
