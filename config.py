@@ -1,4 +1,5 @@
 ###
+# Copyright (c) 2017, Brandon Roberts <brandon@bxroberts.org>
 # Copyright (c) 2012, James Tatum
 # All rights reserved.
 #
@@ -36,10 +37,10 @@ def configure(advanced):
     # user or not.  You should effect your configuration by manipulating the
     # registry as appropriate.
     from supybot.questions import expect, anything, something, yn
-    conf.registerPlugin('Detroll', True)
+    conf.registerPlugin('AcademicUrlTitles', True)
 
 
-Detroll = conf.registerPlugin('Detroll')
+AcademicUrlTitles = conf.registerPlugin('AcademicUrlTitles')
 # This is where your configuration variables (if any) should go.  For example:
 # conf.registerGlobalValue(Detroll, 'someConfigVariableName',
 #     registry.Boolean(False, """Help for someConfigVariableName."""))

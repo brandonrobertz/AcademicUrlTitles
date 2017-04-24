@@ -1,4 +1,5 @@
 ###
+# Copyright (c) 2017, Brandon Roberts <brandon@bxroberts.org>
 # Copyright (c) 2012, James Tatum
 # All rights reserved.
 #
@@ -29,8 +30,8 @@
 
 from supybot.test import *
 
-class DetrollTestCase(PluginTestCase):
-    plugins = ('Detroll',)
+class AcademicUrlTitlesTestCase(PluginTestCase):
+    plugins = ('AcademicUrlTitles',)
 
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

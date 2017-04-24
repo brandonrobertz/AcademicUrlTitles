@@ -1,4 +1,5 @@
 ###
+# Copyright (c) 2017, Brandon Roberts <brandon@bxroberts.org>
 # Copyright (c) 2012, James Tatum
 # All rights reserved.
 #
@@ -28,13 +29,10 @@
 ###
 
 import re
-import urllib2
 import urlparse
-from BeautifulSoup import BeautifulSoup
-try:
-    import lxml.html
-except ImportError:
-    pass
+import requests
+import urllib3
+import ssl
 
 import supybot.utils as utils
 from supybot.commands import *
@@ -42,39 +40,81 @@ import supybot.plugins as plugins
 import supybot.ircmsgs as ircmsgs
 import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
+import supybot.conf as conf
 
+from cookielib import CookieJar
+from BeautifulSoup import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.poolmanager import PoolManager
+from urllib3.contrib import pyopenssl
+
+from pdftitle import pdf2title
+
+try:
+    import lxml.html
+except ImportError:
+    pass
+
+
+# workaround for Python 2.7.9 (SNI)
+class MyAdapter(HTTPAdapter):
+    def init_poolmanager(self, connections, maxsize, block=False):
+        self.poolmanager = PoolManager(
+            num_pools=connections, maxsize=maxsize,
+            ssl_version=ssl.PROTOCOL_TLSv1, block=block)
+
+# don't print SSL warnings into logs every time we do a lookup
+pyopenssl.inject_into_urllib3()
+urllib3.disable_warnings()
 
 # Control characters to skip from HTML prints
 CONTROL_CHARS = dict.fromkeys(range(32))
-# Maximum size of page or file to open
-MAXSIZE = 100*1024
-# Maximum number of meta http-equiv refresh redirects to unspool
-MAX_HTML_REDIRECTS = 3
-# Maximum time for meta http-equiv redirects to be considered redirects,
-# rather than just periodic refreshes
-MAX_HTML_REDIRECT_TIME = 10
-# User agent to spoof
+# User agent of the bot
 USERAGENT = ('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; '
              'Win64; x64; Trident/5.0')
 # Encoding for IRC output
 ENCODING = 'utf8'
+# ignore all messages from these nicks (or partial matches) all lowercased
+IGNORES = [
+    'ml-feeds', 'ml-helper'
+]
+MAX_RETRIES = 2
 
 
-class Detroll(callbacks.Plugin):
-    """When loaded, this plugin will display some information about URLs
-       entered into any channel where the plugin is enabled.
+class AcademicUrlTitles(callbacks.Plugin):
+    """
+    When loaded, this plugin will display information about URLs pasted by
+    users. This is optimized for academic settings where commonly posted links
+    include PDFs and datasets. Includes integration for j.mp and arXiv.
     """
     threaded = True
-
+    cj = CookieJar()
 
     def clean(self, msg):
+        """
+        Clean a url's title or a message in general
+        """
         cleaned = msg.translate(CONTROL_CHARS).strip()
         return re.sub(r'\s+', ' ', cleaned)
 
-
     def doPrivmsg(self, irc, msg):
+        """
+        Entry point for our bot. This gets hit every time a message arrives
+        in a channel we are in or a PM.
+        """
+        if not msg.nick:
+            return "skipping message from blank nick"
+
+        for nick in IGNORES:
+            if nick in msg.nick.lower():
+                print "skipping msg from {}. Matched IGNORES list {}".format(
+                    msg.nick.lower(), nick
+                )
+                return
+
         if ircmsgs.isCtcp(msg) and not ircmsgs.isAction(msg):
             return
+
         channel = msg.args[0]
         if irc.isChannel(channel):
             if ircmsgs.isAction(msg):
@@ -82,54 +122,136 @@ class Detroll(callbacks.Plugin):
             else:
                 text = msg.args[1]
             for url in utils.web.urlRe.findall(text):
-                self.fetch_url(irc, channel, url)
+                title = self.get_url_title(url)
+                irc.queueMsg(ircmsgs.privmsg(channel, title))
 
-    def fetch_url(self, irc, channel, url):
-        bold = ircutils.bold
+    def get_url_title(self, url):
+        """
+        Handle everything required for fetching and parsing URL information into
+        a channel
+        """
+        response, data, meta = self.fetch_url(url)
+        title = self.parse(
+            meta["final_url"],
+            response,
+            data,
+            bad_cert=meta["bad_cert"]
+        )
+        print "title", title
+        return title
 
-        opener = urllib2.build_opener()
-        opener.addheaders = [('User-agent', USERAGENT)]
-        orig_url = url
-        for iteration in xrange(MAX_HTML_REDIRECTS):
-            # Split fragment from URL due to python bug 11703
-            url = urlparse.urlunsplit(urlparse.urlsplit(url)[0:4]+('',))
+    def fetch_url(self, url):
+        """
+        Fetch our given URL. Use retries, SSL handling, and malformed
+        URL detection to get a robust fetch.
+        """
+        print "Fetching {}".format(url)
+        s = requests.Session()
+        s.mount('https://', MyAdapter())
+
+        # if we have an arXiv PDF, just grab the HTML version if we can
+        if self.is_arXiv_mappable(url):
+            return self.fetch_url(self.arXiv_pdf2html_url(url))
+
+        # keep track of the final url we used to complete the request so
+        # that if we end up stripping trailing punctuation then we know
+        # which URL we fetched. this is different from response.url, which
+        # will show us the final redirected URL if redirect occurred
+        # most of the time this will simply be the initial URL found in msg
+        final_url = url
+
+        # punctuation chars to attempt to remove from the end of
+        # a url in the case of 404 or some other error code. we
+        # have to do this because the supyboy.utils.urlRe regex
+        # isn't perfect
+        end_punct = "'\".?!"
+
+        # information about our url's SSL status
+        bad_cert = False
+        verify_ssl = True
+
+        # break out once we have a url of have exhausted retries
+        retry = 0
+        response = None
+        while retry < MAX_RETRIES:
+            print "Fetch try", retry
+            retry += 1
             try:
-                response = opener.open(url)
-            except urllib2.HTTPError, e:
-                # This is raised due to an unusual status code. Often, it's
-                # raised in conjunction with some html, so let's ignore and
-                # try to parse it anyhow.
-                response = e
-            except urllib2.URLError, e:
-                reply = 'Error opening URL: [{0}]'.format(bold(e.reason))
-                irc.queueMsg(ircmsgs.privmsg(channel, reply))
-                return
-            html = response.read(MAXSIZE)
-            contenttype = response.info().getheader('Content-Type')
-            if 'text/html' in contenttype:
-                # Scrub potentially malformed HTML with lxml first
-                try:
-                    html = lxml.html.tostring(lxml.html.fromstring(html))
-                except NameError:
-                    # lxml isn't installed, just try the html as is
-                    pass
-                # Here's where we check to see if this is a meta tag redirect
-                # urllib2 does 301/302 redirects but not meta tag ones.
-                new_url = self.meta_redirect(html)
-                if new_url:
-                    url = new_url
-                    continue
-            reply = self.parse(orig_url, response, html)
-            irc.queueMsg(ircmsgs.privmsg(channel, reply))
-            return
-        reply = 'Error opening URL: [{0}]'.format(bold('Too many redirects'))
-        irc.queueMsg(ircmsgs.privmsg(channel, reply))
+                response = s.get(
+                    url,
+                    cookies=self.cj,
+                    verify=verify_ssl,
+                    headers={'User-agent': USERAGENT}
+                )
+            # TODO: make this a configurable functionality
+            except requests.exceptions.SSLError:
+                print "Bad cert!"
+                bad_cert = True
+                verify_ssl = False
+                continue
+            except Exception, e:
+                print u"Requests get error: {}".format(e)
+                continue
 
-    def parse(self, url, response, html):
-        code = response.code
+            # if we got an error code and we have a punctuation character at
+            # the end of the url, attempt to strip it and try the url again
+            if response.status_code in [404, 400, 504] and url[-1] in end_punct:
+                url = url[:-1]
+                final_url = url
+                continue
+
+            # success (presumably)
+            break
+
+        print "response", response
+
+        # bummer ...
+        if response is None:
+            return
+
+        data = response.content
+        contenttype = response.headers.get('Content-Type')
+        # Scrub potentially malformed HTML with lxml first
+        if 'text/html' in contenttype:
+            try:
+                data = lxml.html.tostring(lxml.html.fromstring(data))
+            except NameError:
+                # lxml isn't installed, just try the html as is
+                pass
+            else:
+                print "Scrubbed HTML data"
+
+        # store metadata about the request, such as SSL validity, and other
+        # things we did to make the request successful
+        metadata = {
+            "bad_cert": bad_cert,
+            "final_url": final_url
+        }
+
+        return response, data, metadata
+
+    def parse(self, url, response, data, bad_cert=False):
+        """
+        Take our retrieved page (and some metadata) and construct a title
+        message from it based on status, content type, etc.
+        """
+        code = response.status_code
+        contenttype = response.headers.get('content-type')
+
+        # requests sets the response.url as the final url in the case
+        # of a series of redirects/rewrites
         finalurl = response.url
-        contenttype = response.info().getheader('Content-Type')
-        size = self.sizeof_fmt(response.info().getheader('Content-Length'))
+        domain = urlparse.urlparse(url).hostname.lower()
+
+        # some requests won't have this set. we should omit it in that case
+        cl = response.headers.get('content-length', None)
+        if not cl:
+            cl = len(response.content) or None
+
+        # a friendly size, i.e., 200KB, 1.3MB
+        size = self.sizeof_fmt(cl)
+
+        # these help the XML parser decode the page
         options = {}
         charset = contenttype.split('charset=')
         if len(charset) == 2:
@@ -137,62 +259,130 @@ class Detroll(callbacks.Plugin):
 
         statusinfo = []
         statusstring = ''
+        # we use this to annotate information about non-HTML pages
         extradata = []
         extradatastring = ''
 
-        bold = ircutils.bold
-
+        # TODO: make this a configurable functionality
+        if bad_cert:
+            statusinfo.append('WARNING: BAD CERT')
         if code != 200:
             statusinfo.append(str(code))
 
-        if url != finalurl:
-            finalurl = urlparse.urlparse(finalurl).hostname
-            statusinfo.append('R: {0}'.format(finalurl))
+        # redirect check
+        is_redirect = lambda r: r.status_code in [301, 302]
+        n_redirects = len(filter(is_redirect, response.history))
+        if n_redirects > 0:
+            redir_str = self.parse_redirect(response)
+            if redir_str:
+                statusinfo.append('R: {0}'.format(redir_str))
 
+        # this is metadata about the request. includes things like bad cert
+        # warning, non-200 response codes, etc
         if statusinfo:
-            statusstring = '[{0}] '.format(bold(' '.join(statusinfo)))
+            statusstring = '({0}) '.format(', '.join(statusinfo))
 
+        # handle a normal web page
         if 'text/html' in contenttype:
-            soup = BeautifulSoup(html,
-                                 convertEntities=BeautifulSoup.HTML_ENTITIES,
-                                 **options)
+            soup = BeautifulSoup(
+                data, convertEntities=BeautifulSoup.HTML_ENTITIES, **options
+            )
             try:
                 title = self.clean(soup.first('title').string)
             except AttributeError:
-                title = 'Error reading title'
+                domain = urlparse.urlparse(url).hostname
+                if domain:
+                    title = "No title: {}".format(domain[0])
+                else:
+                    title = "No title"
 
-            reply = '{0}Title: [{1}]'.format(statusstring,
-                                             bold(title.encode(ENCODING)))
-        else:
+            return '[ {0}{1} ]'.format(statusstring, title.encode(ENCODING))
+
+        # handle arXiv PDFs separately
+        elif 'application/pdf' in contenttype and self.is_arXiv_mappable(url):
+            html_url = self.arXiv_pdf2html_url(url)
+            # recurse into our fetch_url parser since it will be
+            # an HTML document this time around
+            return self.get_title_url(html_url)
+
+        # handle PDFs directly here
+        elif 'application/pdf' in contenttype:
+            print "Parsing PDF"
+            pdf_error = False
+            try:
+                title = pdf2title(data)
+            except Exception, e:
+                print u"PDF Error: {}".format(e)
+                pdf_error = True
+
             if size:
-                extradata.append('Size: [{0}]'.format(bold(size)))
+                extradata.append('{0}'.format(size))
 
             if extradata:
                 extradatastring = ' '.join(extradata)
-            reply = '{0}Content type: [{1}] {2}'.format(statusstring,
-                                                        bold(contenttype),
-                                                        extradatastring)
+
+            if not pdf_error and title:
+                reply = '[ {0}{3} ({1}) {2} ]'.format(statusstring,
+                                                     contenttype,
+                                                     extradatastring, title)
+            else:
+                reply = '[ {0}({1}) {2} ]'.format(statusstring,
+                                                     contenttype,
+                                                     extradatastring)
+            print "reply", reply
+        else:
+            if size:
+                extradata.append('{0}'.format(size))
+
+            if extradata:
+                extradatastring = ' '.join(extradata)
+            reply = '[ {0}({1}) {2} ]'.format(statusstring,
+                                              contenttype,
+                                              extradatastring)
 
         return reply
 
-    def meta_redirect(self, content):
-        soup  = BeautifulSoup(content)
+    def parse_redirect(self, response):
+        """
+        Take a requests response object that we know contains a redirect
+        in its response history and turn it into a short, readable string
+        summarizing the nature of the redirection.
+        """
+        start = urlparse.urlparse(response.history[0].url)
+        end = urlparse.urlparse(response.url)
 
-        result=soup.find('meta',
-                         attrs={'http-equiv':re.compile('^refresh$', re.I)})
-        if result:
-            try:
-                wait,text=result['content'].split(';')
-            except ValueError:
-                # Tag like <meta http-equiv="refresh" content="86400" />
-                return None
-            if int(wait) <= MAX_HTML_REDIRECT_TIME:
-                if text.lower().startswith('url='):
-                    url=text[4:]
-                    return url
-        return None
+        # first check to see if it's a domain/subdomain redirect
+        if start.hostname != end.hostname:
+            return end.domain
+
+        # then check to see if we did just a method change
+        if start.scheme != end.scheme:
+            return end.scheme.upper()
+
+    def is_arXiv_mappable(self, url):
+        """
+        Determine whether an arxiv.org PDF url is mappable to its
+        HTML counterpart. Use this in making the decision whether or
+        not to try and extract PDF title from the document or to
+        try and reconstruct the original HTML URL
+        """
+        return re.match('https?://arxiv.org/pdf/[0-9\.]+\.pdf', url)
+
+    def arXiv_pdf2html_url(self, pdf_url):
+        """
+        Take an arXiv PDF url and fetch the title from the corresponding
+        HTML page, since arXiv has a deterministic mapping between the
+        two. Example:
+            PDF:  https://arxiv.org/pdf/1703.08251.pdf
+            HTML: https://arxiv.org/abs/1703.08251
+        """
+        match = re.match('https?://arxiv.org/pdf/([0-9\.]+)\.pdf', pdf_url)
+        document_id = match.groups()[0]
+        return "https://arxiv.org/abs/{}".format(document_id)
 
     def sizeof_fmt(self, num):
+        """ Convert a size in bytes into a human-friendly size.
+        """
         if num is None:
             return 'No size'
         num = int(num)
@@ -203,7 +393,5 @@ class Detroll(callbacks.Plugin):
         return "%3.1f%s" % (num, 'TB')
 
 
-Class = Detroll
-
-
+Class = AcademicUrlTitles
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

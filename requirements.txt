@@ -1,0 +1,6 @@
+BeautifulSoup==3.2.1
+PyPDF2==1.26.0
+limnoria==2017.01.10
+lxml==3.7.3
+requests==2.13.0
+urllib3==1.20
