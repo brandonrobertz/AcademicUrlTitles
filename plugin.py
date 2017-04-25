@@ -123,14 +123,18 @@ class AcademicUrlTitles(callbacks.Plugin):
                 text = msg.args[1]
             for url in utils.web.urlRe.findall(text):
                 title = self.get_url_title(url)
-                irc.queueMsg(ircmsgs.privmsg(channel, title))
+                if title:
+                    irc.queueMsg(ircmsgs.privmsg(channel, title))
 
     def get_url_title(self, url):
         """
         Handle everything required for fetching and parsing URL information into
         a channel
         """
-        response, data, meta = self.fetch_url(url)
+        result = self.fetch_url(url)
+        if not result:
+            return
+        response, data, meta = result
         title = self.parse(
             meta["final_url"],
             response,
