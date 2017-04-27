@@ -70,8 +70,8 @@ urllib3.disable_warnings()
 # Control characters to skip from HTML prints
 CONTROL_CHARS = dict.fromkeys(range(32))
 # User agent of the bot
-USERAGENT = ('Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; '
-             'Win64; x64; Trident/5.0')
+USERAGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
+    '(KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36'
 # Encoding for IRC output
 ENCODING = 'utf8'
 # ignore all messages from these nicks (or partial matches) all lowercased
