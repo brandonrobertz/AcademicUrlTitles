@@ -141,7 +141,9 @@ class AcademicUrlTitles(callbacks.Plugin):
             data,
             bad_cert=meta["bad_cert"]
         )
-        print "title", title
+        # Add HTML link to re-mapped arXiv PDF urls
+        if self.is_arXiv_mappable(url):
+            title += ' | {}'.format(response.url)
         return title
 
     def fetch_url(self, url):
