@@ -4,3 +4,5 @@ limnoria==2017.01.10
 lxml==3.7.3
 requests==2.13.0
 urllib3==1.20
+pafy==0.5.3.1
+youtube-dl==2017.10.7

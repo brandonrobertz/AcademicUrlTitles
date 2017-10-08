@@ -49,6 +49,8 @@ from requests.packages.urllib3.poolmanager import PoolManager
 from urllib3.contrib import pyopenssl
 
 from pdftitle import pdf2information
+import pafy
+
 
 try:
     import lxml.html
@@ -316,6 +318,13 @@ class AcademicUrlTitles(callbacks.Plugin):
             return '[ {0}{1} ({2}, {3}) {4} ]'.format(
                 statusstring, info["title"], contenttype, info["pages"], size
             )
+
+        # use youtube-API for this part
+        elif re.match("^https?://www.youtube.com/.*$", url) or \
+                re.match("^https?://youtu.be/.*$"):
+            video = pafy.new(url)
+            return '[ {0}{1} ({2}, {3}) ]'.format(
+                statusstring, video.title, video.duration)
 
         # generic datatypes, list size and request status
         else:
