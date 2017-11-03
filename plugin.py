@@ -364,7 +364,7 @@ class AcademicUrlTitles(callbacks.Plugin):
             PDF:  https://arxiv.org/pdf/1703.08251.pdf
             HTML: https://arxiv.org/abs/1703.08251
         """
-        match = re.match('https?://arxiv.org/pdf/([0-9\.]+)\.pdf', pdf_url)
+        match = re.match('https?://arxiv.org/pdf/([0-9\.v]+)\.pdf', pdf_url)
         document_id = match.groups()[0]
         return "https://arxiv.org/abs/{}".format(document_id)
 
