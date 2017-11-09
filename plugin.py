@@ -289,8 +289,15 @@ class AcademicUrlTitles(callbacks.Plugin):
             # make sure to put the space at the end here
             statusstring = '({0}) '.format(', '.join(statusinfo))
 
+        # use youtube-API for this part
+        if re.match("^https?://www.youtube.com/.*$", url) or \
+                re.match("^https?://youtu.be/.*$"):
+            video = pafy.new(url)
+            return '[ {0} ({1}, {2}) ]'.format(
+                statusstring, video.title, video.duration)
+
         # handle a normal web page
-        if 'text/html' in contenttype:
+        elif 'text/html' in contenttype:
             soup = BeautifulSoup(
                 data, convertEntities=BeautifulSoup.HTML_ENTITIES, **options
             )
@@ -319,13 +326,6 @@ class AcademicUrlTitles(callbacks.Plugin):
             return '[ {0}{1} ({2}, {3}) {4} ]'.format(
                 statusstring, info["title"], contenttype, info["pages"], size
             )
-
-        # use youtube-API for this part
-        elif re.match("^https?://www.youtube.com/.*$", url) or \
-                re.match("^https?://youtu.be/.*$"):
-            video = pafy.new(url)
-            return '[ {0}{1} ({2}, {3}) ]'.format(
-                statusstring, video.title, video.duration)
 
         # generic datatypes, list size and request status
         else:
