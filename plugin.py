@@ -291,7 +291,7 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         # use youtube-API for this part
         if re.match("^https?://www.youtube.com/.*$", url) or \
-                re.match("^https?://youtu.be/.*$"):
+                re.match("^https?://youtu.be/.*$", url):
             video = pafy.new(url)
             return '[ {0} ({1}, {2}) ]'.format(
                 statusstring, video.title, video.duration)
