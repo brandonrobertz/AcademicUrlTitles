@@ -91,7 +91,7 @@ class AcademicUrlTitles(callbacks.Plugin):
     """
     threaded = True
     cj = CookieJar()
-    ARXIV_RE = 'https?://arxiv.org/pdf/([0-9\.v]+)\.pdf'
+    ARXIV_RE = 'https?://arxiv.org/pdf/([0-9]+\.[0-9v]+)(?:\.pdf)?'
 
     def clean(self, msg):
         """
