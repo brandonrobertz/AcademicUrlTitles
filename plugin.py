@@ -62,8 +62,7 @@ except ImportError:
 class MyAdapter(HTTPAdapter):
     def init_poolmanager(self, connections, maxsize, block=False):
         self.poolmanager = PoolManager(
-            num_pools=connections, maxsize=maxsize,
-            ssl_version=ssl.PROTOCOL_TLSv1, block=block)
+            num_pools=connections, maxsize=maxsize, block=block)
 
 # don't print SSL warnings into logs every time we do a lookup
 pyopenssl.inject_into_urllib3()
