@@ -108,7 +108,7 @@ class AcademicUrlTitles(callbacks.Plugin):
             return "skipping message from blank nick"
 
         for nick in IGNORES:
-            if nick in msg.nick.lower():
+            if nick.lower() in msg.nick.lower():
                 print "skipping msg from {}. Matched IGNORES list {}".format(
                     msg.nick.lower(), nick
                 )
