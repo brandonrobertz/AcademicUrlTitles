@@ -77,7 +77,7 @@ USERAGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 ENCODING = 'utf8'
 # ignore all messages from these nicks (or partial matches) all lowercased
 IGNORES = [
-    'ml-feeds', 'ml-helper', 'nutrofeeds'
+    'ML-deploy-feeds', 'ml-feeds', 'ml-helper', 'nutrofeeds'
 ]
 MAX_RETRIES = 2
 
