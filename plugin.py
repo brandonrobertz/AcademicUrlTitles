@@ -211,8 +211,6 @@ class AcademicUrlTitles(callbacks.Plugin):
             # success (presumably)
             break
 
-        print "response", response
-
         # bummer ...
         if response is None:
             return
