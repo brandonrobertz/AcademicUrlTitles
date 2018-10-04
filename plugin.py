@@ -27,7 +27,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 ###
-
+from __future__ import print_function
 import re
 import urlparse
 import requests
@@ -109,9 +109,9 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         for nick in IGNORES:
             if nick.lower() in msg.nick.lower():
-                print "skipping msg from {}. Matched IGNORES list {}".format(
+                print("skipping msg from {}. Matched IGNORES list {}".format(
                     msg.nick.lower(), nick
-                )
+                ))
                 return
 
         if ircmsgs.isCtcp(msg) and not ircmsgs.isAction(msg):
@@ -153,7 +153,7 @@ class AcademicUrlTitles(callbacks.Plugin):
         Fetch our given URL. Use retries, SSL handling, and malformed
         URL detection to get a robust fetch.
         """
-        print "Fetching {}".format(url)
+        print("Fetching {}".format(url))
         s = requests.Session()
         s.mount('https://', MyAdapter())
 
@@ -182,7 +182,7 @@ class AcademicUrlTitles(callbacks.Plugin):
         retry = 0
         response = None
         while retry < MAX_RETRIES:
-            print "Fetch try", retry
+            print("Fetch try", retry)
             retry += 1
             try:
                 response = s.get(
@@ -193,12 +193,12 @@ class AcademicUrlTitles(callbacks.Plugin):
                 )
             # TODO: make this a configurable functionality
             except requests.exceptions.SSLError:
-                print "Bad cert!"
+                print("Bad cert!")
                 bad_cert = True
                 verify_ssl = False
                 continue
             except Exception, e:
-                print u"Requests get error: {}".format(e)
+                print(u"Requests get error: {}".format(e))
                 continue
 
             # if we got an error code and we have a punctuation character at
@@ -225,7 +225,7 @@ class AcademicUrlTitles(callbacks.Plugin):
                 # lxml isn't installed, just try the html as is
                 pass
             else:
-                print "Scrubbed HTML data"
+                print("Scrubbed HTML data")
 
         # store metadata about the request, such as SSL validity, and other
         # things we did to make the request successful
@@ -290,7 +290,7 @@ class AcademicUrlTitles(callbacks.Plugin):
         if re.match("^https?://www.youtube.com/.*$", url) or \
                 re.match("^https?://youtu.be/.*$", url):
             video = pafy.new(url)
-            return '[ {0} ({1}, {2}) ]'.format(
+            return u'[ {0} ({1}, {2}) ]'.format(
                 statusstring, video.title, video.duration)
 
         # handle a normal web page
