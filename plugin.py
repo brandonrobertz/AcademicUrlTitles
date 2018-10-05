@@ -77,7 +77,7 @@ USERAGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' \
 ENCODING = 'utf8'
 # ignore all messages from these nicks (or partial matches) all lowercased
 IGNORES = [
-    'ML-deploy-feeds', 'ml-feeds', 'ml-helper', 'nutrofeeds'
+    'ML-deploy-feeds', 'ml-feeds', 'ml-helper', 'nutrofeeds', 'AGI-feeds',
 ]
 MAX_RETRIES = 2
 
@@ -109,7 +109,7 @@ class AcademicUrlTitles(callbacks.Plugin):
 
         for nick in IGNORES:
             if nick.lower() in msg.nick.lower():
-                print("skipping msg from {}. Matched IGNORES list {}".format(
+                print(u"skipping msg from {}. Matched IGNORES list {}".format(
                     msg.nick.lower(), nick
                 ))
                 return
@@ -153,7 +153,7 @@ class AcademicUrlTitles(callbacks.Plugin):
         Fetch our given URL. Use retries, SSL handling, and malformed
         URL detection to get a robust fetch.
         """
-        print("Fetching {}".format(url))
+        print(u"Fetching {}".format(url))
         s = requests.Session()
         s.mount('https://', MyAdapter())
 
@@ -197,7 +197,7 @@ class AcademicUrlTitles(callbacks.Plugin):
                 bad_cert = True
                 verify_ssl = False
                 continue
-            except Exception, e:
+            except Exception as e:
                 print(u"Requests get error: {}".format(e))
                 continue
 
